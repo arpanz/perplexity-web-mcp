@@ -1,5 +1,6 @@
 import type { Page } from "playwright";
 import { newSearchPage } from "./browser.js";
+import { selectModel } from "./model.js";
 
 const PERPLEXITY_HOME = "https://www.perplexity.ai/";
 export const DEFAULT_TIMEOUT_MS = 120_000;
@@ -32,21 +33,27 @@ export interface SearchResult {
   answer: string;
   sources: Source[];
   complete: boolean;
+  model: string | null;
+}
+
+export interface SearchOptions {
+  timeoutMs: number;
+  sources?: string[];
+  // Model names to try in order; the first one the account can use is selected
+  models?: string[];
+  thinking?: boolean;
 }
 
 const log = (msg: string) => console.error(`[perplexity-web-mcp] ${msg}`);
 
-export async function search(query: string, timeoutMs: number): Promise<SearchResult> {
-  log(`Search: "${query}" (timeout: ${timeoutMs}ms)`);
-  return runSearch(query, timeoutMs, null);
-}
-
-export async function searchWithSources(query: string, timeoutMs: number, sources: string[]): Promise<SearchResult> {
-  log(`Search: "${query}" sources=[${sources.join(",")}] (timeout: ${timeoutMs}ms)`);
-  return runSearch(query, timeoutMs, sources);
-}
-
-async function runSearch(query: string, timeoutMs: number, sources: string[] | null): Promise<SearchResult> {
+export async function search(query: string, options: SearchOptions): Promise<SearchResult> {
+  const { timeoutMs, sources, models, thinking = true } = options;
+  log(
+    `Search: "${query}"` +
+    (sources ? ` sources=[${sources.join(",")}]` : "") +
+    (models ? ` models=[${models.join(",")}] thinking=${thinking}` : "") +
+    ` (timeout: ${timeoutMs}ms)`
+  );
   const page = await newSearchPage();
 
   try {
@@ -70,6 +77,8 @@ async function runSearch(query: string, timeoutMs: number, sources: string[] | n
       await selectSources(page, sources);
     }
 
+    const model = models ? await selectModel(page, models, thinking) : null;
+
     log("Typing query...");
     await searchBox.click();
     await searchBox.fill(query);
@@ -80,7 +89,7 @@ async function runSearch(query: string, timeoutMs: number, sources: string[] | n
     const citedSources = await extractSources(page);
 
     log(`Done. Answer length: ${answer.length} chars, sources: ${citedSources.length}, complete: ${complete}`);
-    return { answer, sources: citedSources, complete };
+    return { answer, sources: citedSources, complete, model };
   } finally {
     await page.close();
   }
