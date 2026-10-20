@@ -1,5 +1,5 @@
 import type { Page } from "playwright";
-import { ensureBrowser, getFirstPage } from "./browser.js";
+import { closeBrowser, ensureBrowser, getFirstPage } from "./browser.js";
 
 const PERPLEXITY_HOME = "https://www.perplexity.ai/";
 const POLL_INTERVAL_MS = 2000;
@@ -39,20 +39,29 @@ export async function checkSession(page: Page): Promise<boolean> {
   return !signInShown;
 }
 
-export async function ensureAuthenticated(): Promise<void> {
+// Checks the session headlessly; only if the user must sign in does it reopen the browser
+// with a visible window, and it closes that window again once they have.
+// Returns true if the user was already signed in.
+export async function ensureAuthenticated(): Promise<boolean> {
   await ensureBrowser();
-  const page = await getFirstPage();
-  await page.goto(PERPLEXITY_HOME, { waitUntil: "domcontentloaded" });
-
-  const authenticated = await checkSession(page);
-  if (authenticated) {
+  if (await checkSession(await getFirstPage())) {
     log("Session active.");
-    return;
+    return true;
   }
 
+  await ensureBrowser({ headed: true });
+  const page = await getFirstPage();
+  await page.goto(PERPLEXITY_HOME, { waitUntil: "domcontentloaded" });
+  await page.bringToFront();
+
   log("No active session. Please log in to Perplexity in the browser window...");
-  await waitForLogin(page);
-  log("Login detected.");
+  try {
+    await waitForLogin(page);
+    log("Login detected.");
+  } finally {
+    await closeBrowser();
+  }
+  return false;
 }
 
 async function waitForLogin(page: Page): Promise<void> {

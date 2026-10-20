@@ -56,10 +56,13 @@ async function runSearch(query: string, timeoutMs: number, sources: string[] | n
 
     // Wait for the search input to be ready before any further interaction
     const searchBox = page.locator("#ask-input").first();
-    await searchBox.waitFor({ state: "visible", timeout: 15_000 }).catch(async (err) => {
+    await searchBox.waitFor({ state: "visible", timeout: 15_000 }).catch(async () => {
       const bodyHtml = await page.evaluate(() => document.body.innerHTML.slice(0, 5000));
       log(`DOM dump (first 5000 chars):\n${bodyHtml}`);
-      throw err;
+      throw new Error(
+        "Perplexity's search box never appeared. If Cloudflare is blocking the hidden browser, " +
+        "set PERPLEXITY_WEB_MCP_HEADED=1 in the MCP server's environment to use a visible window."
+      );
     });
 
     if (sources) {
@@ -254,6 +257,11 @@ async function extractAnswer(page: Page): Promise<string> {
       if (node.nodeType === Node.TEXT_NODE) return (node.textContent ?? "").replace(/\s+/g, " ");
       if (node.nodeType !== Node.ELEMENT_NODE) return "";
       const el = node as Element;
+      // KaTeX renders each formula three times (MathML, TeX annotation, HTML); keep only the TeX
+      if (el.classList.contains("katex")) {
+        const tex = el.querySelector('annotation[encoding="application/x-tex"]')?.textContent?.trim() ?? "";
+        return el.closest(".katex-display") ? `\n\n$$${tex}$$\n\n` : `$${tex}$`;
+      }
       switch (el.tagName) {
         case "H1": case "H2": case "H3": case "H4": case "H5": case "H6":
           return `${"#".repeat(Number(el.tagName[1]))} ${inline(el).trim()}\n\n`;

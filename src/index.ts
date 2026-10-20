@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 import { FastMCP } from "fastmcp";
 import { z } from "zod";
-import { ensureAuthenticated, checkSession } from "./auth.js";
-import { ensureBrowser, getFirstPage } from "./browser.js";
+import { ensureAuthenticated } from "./auth.js";
+import { ensureBrowser } from "./browser.js";
 import { search, searchWithSources, SearchResult, DEFAULT_TIMEOUT_MS } from "./search.js";
 
 function formatResult(result: SearchResult): string {
@@ -64,13 +64,9 @@ mcp.addTool({
     "Check if you are authenticated on Perplexity.ai. If not, opens a browser window so you can log in.",
   parameters: z.object({}),
   execute: async () => {
-    await ensureBrowser();
-    const page = await getFirstPage();
-    const authenticated = await checkSession(page);
-    if (authenticated) {
+    if (await ensureAuthenticated()) {
       return "Already authenticated on Perplexity.ai.";
     }
-    await ensureAuthenticated();
     return "Login successful. You are now authenticated on Perplexity.ai.";
   },
 });

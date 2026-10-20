@@ -8,23 +8,31 @@ const PROFILE_DIR = process.env.PERPLEXITY_WEB_MCP_PROFILE ?? path.resolve(__dir
 
 // Prefer Playwright's bundled Chromium; fall back to the installed Google Chrome
 // (still with its own separate profile directory) when Chromium hasn't been downloaded.
-function browserChannel(): string | undefined {
-  if (fs.existsSync(chromium.executablePath())) return undefined;
+// The "chromium" channel uses Chrome's new headless mode, which Cloudflare lets through,
+// rather than the stripped-down headless shell, which it blocks.
+function browserChannel(): string {
+  if (fs.existsSync(chromium.executablePath())) return "chromium";
   console.error("[perplexity-web-mcp] Playwright Chromium not found, using installed Google Chrome.");
   return "chrome";
 }
 
-let context: BrowserContext | null = null;
+// Runs headless by default. The window is only shown for signing in, or always when
+// PERPLEXITY_WEB_MCP_HEADED=1 (a fallback in case Cloudflare starts blocking headless Chrome).
+const ALWAYS_HEADED = process.env.PERPLEXITY_WEB_MCP_HEADED === "1";
 
-export async function launchBrowser(): Promise<void> {
+let context: BrowserContext | null = null;
+let contextHeaded = false;
+
+export async function launchBrowser(headed = false): Promise<void> {
   if (context) {
     await context.close();
     context = null;
   }
 
+  contextHeaded = headed || ALWAYS_HEADED;
   context = await chromium.launchPersistentContext(PROFILE_DIR, {
     channel: browserChannel(),
-    headless: false,
+    headless: !contextHeaded,
     viewport: { width: 1280, height: 800 },
     args: [
       "--disable-blink-features=AutomationControlled",
@@ -34,8 +42,9 @@ export async function launchBrowser(): Promise<void> {
   });
 }
 
-export async function ensureBrowser(): Promise<void> {
-  if (!context) await launchBrowser();
+// Launches the browser if needed, relaunching with a visible window when `headed` is requested
+export async function ensureBrowser({ headed = false } = {}): Promise<void> {
+  if (!context || (headed && !contextHeaded)) await launchBrowser(headed);
 }
 
 export function getContext(): BrowserContext {
