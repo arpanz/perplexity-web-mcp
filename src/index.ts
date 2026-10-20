@@ -10,7 +10,8 @@ function formatResult(result: SearchResult): string {
   const sourcesText = result.sources.length > 0
     ? "\n\nSources:\n" + result.sources.map((s, i) => `${i + 1}. [${s.title}](${s.url})`).join("\n")
     : "";
-  return result.answer + sourcesText;
+  const note = result.complete ? "" : "\n\n(Note: timed out before Perplexity finished answering; this answer may be incomplete.)";
+  return result.answer + sourcesText + note;
 }
 
 // --- CLI args ---
@@ -22,7 +23,7 @@ const TIMEOUT_MS = timeoutArg ? parseInt(timeoutArg.split("=")[1], 10) * 1000 : 
 // --- MCP server ---
 const mcp = new FastMCP({
   name: "perplexity-web",
-  version: "1.1.1",
+  version: "1.2.0",
 });
 
 mcp.addTool({
@@ -48,7 +49,7 @@ mcp.addTool({
     sources: z
       .array(z.enum(["web", "academic", "social"]))
       .min(1)
-      .describe("Sources to search: 'web' (general web), 'academic' (scholarly articles), 'social' (Reddit & forums). Can combine multiple."),
+      .describe("Sources to search: 'web' (general web), 'academic' (scholarly articles), 'social' (Reddit & forums; may not be offered on every account). Can combine multiple."),
   }),
   execute: async ({ query, sources }) => {
     await ensureBrowser();

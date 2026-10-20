@@ -1,42 +1,32 @@
 import { chromium, type BrowserContext, type Page } from "playwright";
 import path from "path";
 import { fileURLToPath } from "url";
-import { execSync } from "child_process";
+import fs from "fs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const PROFILE_DIR = path.resolve(__dirname, "../.playwright/profile");
+const PROFILE_DIR = process.env.PERPLEXITY_WEB_MCP_PROFILE ?? path.resolve(__dirname, "../.playwright/profile");
 
-function checkChromiumInstalled(): void {
-  try {
-    execSync("npx playwright install --dry-run chromium", { stdio: "ignore" });
-  } catch {
-    // dry-run not available in all versions, fall back to checking executablePath
-  }
-  try {
-    chromium.executablePath();
-  } catch {
-    console.error(
-      "[perplexity-web-mcp] Chromium is not installed.\n" +
-      "Run: npx playwright install chromium"
-    );
-    process.exit(1);
-  }
+// Prefer Playwright's bundled Chromium; fall back to the installed Google Chrome
+// (still with its own separate profile directory) when Chromium hasn't been downloaded.
+function browserChannel(): string | undefined {
+  if (fs.existsSync(chromium.executablePath())) return undefined;
+  console.error("[perplexity-web-mcp] Playwright Chromium not found, using installed Google Chrome.");
+  return "chrome";
 }
 
 let context: BrowserContext | null = null;
 
 export async function launchBrowser(): Promise<void> {
-  checkChromiumInstalled();
   if (context) {
     await context.close();
     context = null;
   }
 
   context = await chromium.launchPersistentContext(PROFILE_DIR, {
+    channel: browserChannel(),
     headless: false,
     viewport: { width: 1280, height: 800 },
     args: [
-      "--no-sandbox",
       "--disable-blink-features=AutomationControlled",
       "--window-position=0,0",
       "--no-focus-on-map",
